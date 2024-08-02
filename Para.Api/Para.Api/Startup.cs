@@ -35,7 +35,6 @@ public class Startup
         this.Configuration = configuration;
     }
 
-
     public void ConfigureServices(IServiceCollection services)
     {
         jwtConfig = Configuration.GetSection("JwtConfig").Get<JwtConfig>();
@@ -58,10 +57,8 @@ public class Startup
             x.RegisterValidatorsFromAssemblyContaining<BaseValidator>();
         });
 
-
         var config = new MapperConfiguration(cfg => { cfg.AddProfile(new MapperConfig()); });
         services.AddSingleton(config.CreateMapper());
-
 
         services.AddMediatR(typeof(CreateCustomerCommand).GetTypeInfo().Assembly);
 
@@ -92,7 +89,6 @@ public class Startup
                 ClockSkew = TimeSpan.FromMinutes(2)
             };
         });
-
 
         services.AddSwaggerGen(c =>
         {
@@ -128,15 +124,16 @@ public class Startup
             opt.ConfigurationOptions = redisConfig;
             opt.InstanceName = Configuration["Redis:InstanceName"];
         });
-        
-        
+
         services.AddHangfire(configuration => configuration
             .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
             .UseSimpleAssemblyNameTypeSerializer()
             .UseRecommendedSerializerSettings()
             .UseSqlServerStorage(Configuration.GetConnectionString("HangfireConnection")));
         services.AddHangfireServer();
-        
+
+        services.AddSingleton<RabbitMQService>();
+        services.AddSingleton<EmailService>();
 
         services.AddScoped<ISessionContext>(provider =>
         {
@@ -157,7 +154,6 @@ public class Startup
             app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Para.Api v1"));
         }
 
-
         app.UseMiddleware<HeartbeatMiddleware>();
         app.UseMiddleware<ErrorHandlerMiddleware>();
 
@@ -168,6 +164,8 @@ public class Startup
         app.UseRouting();
         app.UseAuthorization();
         app.UseEndpoints(endpoints => { endpoints.MapControllers(); });
+
+        RecurringJob.AddOrUpdate<EmailService>("send-emails", service => service.ProcessQueue(), "*/5 * * * * *");
 
         app.Use((context, next) =>
         {
